@@ -23,6 +23,7 @@
 
 /* USER CODE BEGIN INCLUDE */
 #include "UAC.h"
+#include "audio.h"
 #include <math.h>
 /* USER CODE END INCLUDE */
 
@@ -193,16 +194,33 @@ static int8_t AUDIO_DeInit_FS(uint32_t options)
 static int8_t AUDIO_AudioCmd_FS(uint8_t* pbuf, uint32_t size, uint8_t cmd)
 {
   /* USER CODE BEGIN 2 */
+  printf("[USB_AUDIO] AudioCmd called: cmd=%d, size=%lu\r\n", cmd, size);
+  
   switch(cmd)
   {
     case AUDIO_CMD_START:
       /* Start audio streaming - for microphone input */
+      printf("[USB_AUDIO] AUDIO_CMD_START received\r\n");
       huac.is_streaming = 1;
+      Audio_USB_Start_Streaming();
       break;
 
     case AUDIO_CMD_PLAY:
       /* For microphone, this is actually recording start */
+      printf("[USB_AUDIO] AUDIO_CMD_PLAY received\r\n");
       huac.is_streaming = 1;
+      Audio_USB_Start_Streaming();
+      break;
+      
+    case AUDIO_CMD_STOP:
+      /* Stop audio streaming */
+      printf("[USB_AUDIO] AUDIO_CMD_STOP received\r\n");
+      huac.is_streaming = 0;
+      Audio_USB_Stop_Streaming();
+      break;
+      
+    default:
+      printf("[USB_AUDIO] Unknown command: %d\r\n", cmd);
       break;
   }
   UNUSED(pbuf);
@@ -219,7 +237,9 @@ static int8_t AUDIO_AudioCmd_FS(uint8_t* pbuf, uint32_t size, uint8_t cmd)
 static int8_t AUDIO_VolumeCtl_FS(uint8_t vol)
 {
   /* USER CODE BEGIN 3 */
-  UNUSED(vol);
+  printf("[USB_AUDIO] VolumeCtl called: vol=%d\r\n", vol);
+  // Set microphone volume (0-100)
+  Audio_Set_Volume((uint16_t)vol);
   return (USBD_OK);
   /* USER CODE END 3 */
 }
@@ -232,7 +252,13 @@ static int8_t AUDIO_VolumeCtl_FS(uint8_t vol)
 static int8_t AUDIO_MuteCtl_FS(uint8_t cmd)
 {
   /* USER CODE BEGIN 4 */
-  UNUSED(cmd);
+  printf("[USB_AUDIO] MuteCtl called: cmd=%d\r\n", cmd);
+  // Control microphone mute
+  if (cmd == 1) {
+    Audio_Mute();
+  } else {
+    Audio_UnMute();
+  }
   return (USBD_OK);
   /* USER CODE END 4 */
 }
@@ -248,6 +274,12 @@ static int8_t AUDIO_PeriodicTC_FS(uint8_t *pbuf, uint32_t size, uint8_t cmd)
   static uint32_t periodic_call_count = 0;
   periodic_call_count++;
   
+  // Debug: Print first few calls
+  if (periodic_call_count <= 5) {
+    printf("[USB_AUDIO] PeriodicTC called: count=%lu, cmd=%d, size=%lu\r\n", 
+           periodic_call_count, cmd, size);
+  }
+  
   if (cmd == AUDIO_IN_TC) {
     // Debug: Track periodic calls for microphone
     if (periodic_call_count % 1000 == 0) {
@@ -256,38 +288,24 @@ static int8_t AUDIO_PeriodicTC_FS(uint8_t *pbuf, uint32_t size, uint8_t cmd)
     
     // Microphone data transmission
     if (pbuf != NULL && size > 0) {
-      // Check if mic array is initialized and has data
-      extern uint8_t mic_array_initialized;
-      extern uint16_t usb_audio_buffer[];
+      // Get audio data from I2S processing and send to USB
+      uint16_t bytes_filled = Audio_USB_Get_Next_Packet(pbuf, size);
       
-      if (mic_array_initialized) {
-        // Use real mic array data
-        uint32_t samples_needed = size / 2; // 16-bit samples
-        
-        // Convert 16-bit samples to bytes
-        for (uint32_t i = 0; i < samples_needed && i < (UAC_AUDIO_BUFFER_SIZE / 2); i++) {
-          uint16_t sample = usb_audio_buffer[i];
-          pbuf[i * 2] = sample & 0xFF;         // Low byte
-          pbuf[i * 2 + 1] = (sample >> 8) & 0xFF; // High byte
-        }
-        
-        // Fill remaining with silence if needed
-        for (uint32_t i = samples_needed * 2; i < size; i++) {
-          pbuf[i] = 0;
-        }
-      } else {
-        // Generate test signal if mic array not ready
-        for (uint32_t i = 0; i < size; i += 2) {
-          static uint32_t sample_count = 0;
-          int16_t sample = (int16_t)(16383 * sin(2 * 3.14159 * 1000 * sample_count / 48000));
-          pbuf[i] = sample & 0xFF;
-          pbuf[i + 1] = (sample >> 8) & 0xFF;
-          sample_count++;
-        }
-      }
-      return USBD_OK;
+      // Return the actual number of bytes filled
+      return (bytes_filled > 0) ? USBD_OK : USBD_FAIL;
+    }
+    
+    // Fill with silence if not ready
+    if (pbuf != NULL && size > 0) {
+      memset(pbuf, 0, size);
     }
   }
+  else {
+    // Speaker data reception (legacy)
+    UNUSED(pbuf);
+    UNUSED(size);
+  }
+  
   return (USBD_OK);
   /* USER CODE END 5 */
 }

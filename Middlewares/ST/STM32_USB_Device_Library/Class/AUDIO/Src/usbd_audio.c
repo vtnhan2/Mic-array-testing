@@ -355,7 +355,11 @@ __ALIGN_BEGIN static uint8_t USBD_AUDIO_DeviceQualifierDesc[USB_LEN_DEV_QUALIFIE
 };
 #endif /* USE_USBD_COMPOSITE  */
 
+#ifdef USBD_AUDIO_AS_MICROPHONE
+static uint8_t AUDIOOutEpAdd = AUDIO_IN_EP;
+#else
 static uint8_t AUDIOOutEpAdd = AUDIO_OUT_EP;
+#endif /* USBD_AUDIO_AS_MICROPHONE */
 /**
   * @}
   */
@@ -393,6 +397,22 @@ static uint8_t USBD_AUDIO_Init(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
   AUDIOOutEpAdd = USBD_CoreGetEPAdd(pdev, USBD_EP_OUT, USBD_EP_TYPE_ISOC, (uint8_t)pdev->classId);
 #endif /* USE_USBD_COMPOSITE */
 
+#ifdef USBD_AUDIO_AS_MICROPHONE
+  /* For microphone, use IN endpoint */
+  if (pdev->dev_speed == USBD_SPEED_HIGH)
+  {
+    pdev->ep_in[AUDIOOutEpAdd & 0xFU].bInterval = AUDIO_HS_BINTERVAL;
+  }
+  else   /* LOW and FULL-speed endpoints */
+  {
+    pdev->ep_in[AUDIOOutEpAdd & 0xFU].bInterval = AUDIO_FS_BINTERVAL;
+  }
+
+  /* Open EP IN for microphone */
+  (void)USBD_LL_OpenEP(pdev, AUDIOOutEpAdd, USBD_EP_TYPE_ISOC, AUDIO_OUT_PACKET);
+  pdev->ep_in[AUDIOOutEpAdd & 0xFU].is_used = 1U;
+#else
+  /* For speaker, use OUT endpoint */
   if (pdev->dev_speed == USBD_SPEED_HIGH)
   {
     pdev->ep_out[AUDIOOutEpAdd & 0xFU].bInterval = AUDIO_HS_BINTERVAL;
@@ -402,9 +422,10 @@ static uint8_t USBD_AUDIO_Init(USBD_HandleTypeDef *pdev, uint8_t cfgidx)
     pdev->ep_out[AUDIOOutEpAdd & 0xFU].bInterval = AUDIO_FS_BINTERVAL;
   }
 
-  /* Open EP OUT */
+  /* Open EP OUT for speaker */
   (void)USBD_LL_OpenEP(pdev, AUDIOOutEpAdd, USBD_EP_TYPE_ISOC, AUDIO_OUT_PACKET);
   pdev->ep_out[AUDIOOutEpAdd & 0xFU].is_used = 1U;
+#endif /* USBD_AUDIO_AS_MICROPHONE */
 
   haudio->alt_setting = 0U;
   haudio->offset = AUDIO_OFFSET_UNKNOWN;

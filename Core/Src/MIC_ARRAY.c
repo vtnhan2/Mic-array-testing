@@ -10,6 +10,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "MIC_ARRAY.h"
+#include "audio.h"
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -396,7 +397,15 @@ void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (g_hmic_array != NULL && hi2s == g_hmic_array->hi2s) {
         dma_half_complete = 1;
-        printf("[MIC_ARRAY] DMA Half Complete\r\n");
+        printf("[MIC_ARRAY] DMA Half Complete - Buffer: %p, Size: %d\r\n", 
+               g_hmic_array->audio_buffer, g_hmic_array->buffer_size);
+        
+        // Process audio data for USB streaming
+        extern void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length);
+        
+        // Get I2S data from mic array buffer (first half)
+        uint32_t* i2s_data = (uint32_t*)g_hmic_array->audio_buffer;
+        Audio_USB_Process_I2S_Data(i2s_data, g_hmic_array->buffer_size / 2);
     }
 }
 
@@ -409,7 +418,15 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (g_hmic_array != NULL && hi2s == g_hmic_array->hi2s) {
         dma_full_complete = 1;
-        printf("[MIC_ARRAY] DMA Full Complete\r\n");
+        printf("[MIC_ARRAY] DMA Full Complete - Buffer: %p, Size: %d\r\n", 
+               g_hmic_array->audio_buffer, g_hmic_array->buffer_size);
+        
+        // Process audio data for USB streaming
+        extern void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length);
+        
+        // Get I2S data from mic array buffer (second half)
+        uint32_t* i2s_data = (uint32_t*)g_hmic_array->audio_buffer + (g_hmic_array->buffer_size / 2);
+        Audio_USB_Process_I2S_Data(i2s_data, g_hmic_array->buffer_size / 2);
     }
 }
 

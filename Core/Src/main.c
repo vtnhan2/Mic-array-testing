@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "UAC.h"
 #include "MIC_ARRAY.h"
+#include "audio.h"
 #include "usbd_audio_if.h"
 #include <math.h>
 #include <stdlib.h>
@@ -74,10 +75,14 @@ UAC_AudioConfig_t audio_config;
 uint8_t uac_initialized = 0;
 uint8_t test_mode = 1;  /* 0=silence, 1=sine, 2=square, 3=noise */
 
+/* Test Phase Variables */
+uint8_t test_phase = 0;  /* 0: Test tone phase, 1: Microphone phase */
+uint32_t test_start_time = 0;
+
 /* Audio Processing Variables */
 uint16_t mic_audio_buffer[MIC_ARRAY_BUFFER_SIZE];
 uint16_t usb_audio_buffer[UAC_AUDIO_BUFFER_SIZE / 2];
-  uint8_t use_mic_array = 1;  /* 1=use mic array, 0=use test sound */
+uint8_t use_mic_array = 1;  /* 1=use mic array, 0=use test sound */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -545,7 +550,13 @@ void MIC_ARRAY_Init_Microphones(void)
     
     // Initialize mic array
     MIC_ARRAY_Init(&hmic_array, &hi2s2, &mic_array_config);
-    MIC_ARRAY_StartStreaming(&hmic_array);
+    // Start streaming - this will start I2S DMA
+    HAL_StatusTypeDef status = MIC_ARRAY_StartStreaming(&hmic_array);
+    if (status == HAL_OK) {
+        printf("MIC_ARRAY_StartStreaming: SUCCESS\r\n");
+    } else {
+        printf("MIC_ARRAY_StartStreaming: FAILED (%d)\r\n", status);
+    }
     
     mic_array_initialized = 1;
     printf("Mic Array initialized successfully!\r\n");
@@ -557,19 +568,9 @@ void MIC_ARRAY_Init_Microphones(void)
   */
 void MIC_ARRAY_Process_Audio(void)
 {
-    // Process audio data from mic array
-    if (MIC_ARRAY_GetStatus(&hmic_array)) {
-        // Read audio data from mic array
-        uint16_t audio_data[MIC_ARRAY_BUFFER_SIZE];
-        if (MIC_ARRAY_ReadData(&hmic_array, audio_data, MIC_ARRAY_BUFFER_SIZE) == HAL_OK) {
-            // Convert multi-channel to mono for USB
-            uint16_t mono_data[MIC_ARRAY_BUFFER_SIZE / 4];
-            MIC_ARRAY_ProcessData(&hmic_array, audio_data, mono_data, MIC_ARRAY_BUFFER_SIZE);
-            
-            // Copy to USB audio buffer
-            memcpy(huac.audio_buffer, mono_data, sizeof(mono_data));
-        }
-    }
+    // Audio processing is now handled by I2S callbacks in MIC_ARRAY.c
+    // This function is kept for compatibility but does nothing
+    // The I2S callbacks automatically process audio data and send to USB
 }
 
 /**
@@ -604,8 +605,13 @@ void UAC_Init_Microphone(void)
       printf("UAC Microphone initialized successfully!\r\n");
       printf("UAC is_configured: %d, is_streaming: %d\r\n", huac.is_configured, huac.is_streaming);
       
-      /* Start audio test with sine wave */
-      UAC_StartAudioTest(&huac, test_mode);
+      /* Initialize audio system */
+      Audio_Init_Live_Mode();
+      // Don't start Audio_Start_Live_Mode() - let MIC_ARRAY handle I2S
+      Audio_UnMute();
+      
+      printf("Audio system initialized and ready!\r\n");
+      printf("USB Streaming Status: Active=%d\r\n", huac.is_streaming);
       
       /* Send test message via UART */
       uint8_t msg[] = "UAC Microphone initialized successfully!\r\n";
@@ -624,41 +630,36 @@ void UAC_Init_Microphone(void)
   */
 void UAC_Test_Audio(void)
 {
-  static uint32_t last_test_time = 0;
-  static uint8_t test_cycle = 0;
   uint32_t current_time = HAL_GetTick();
   
-  /* Change test mode every 5 seconds for demonstration */
-  if ((current_time - last_test_time) >= 5000) {
-    last_test_time = current_time;
-    test_cycle++;
+  /* Initialize test start time on first call */
+  if (test_start_time == 0) {
+    test_start_time = current_time;
+    test_phase = 0; /* Start with test tone phase */
+    printf("Starting 10-second test tone phase...\r\n");
+  }
+  
+  /* Check if 10 seconds have passed */
+  if ((current_time - test_start_time) >= 10000 && test_phase == 0) {
+    test_phase = 1; /* Switch to microphone phase */
+    printf("Test tone phase completed. Switching to microphone mode...\r\n");
     
-    switch (test_cycle % 4) {
-      case 0:
-        test_mode = 0; /* Silence */
-        UAC_StartAudioTest(&huac, test_mode);
-        break;
-      case 1:
-        test_mode = 1; /* Sine wave 1kHz */
-        UAC_GenerateTestSignal(&huac, 1000, 16000, 0); /* 1kHz, 50% amplitude, continuous */
-        break;
-      case 2:
-        test_mode = 2; /* Square wave 2kHz */
-        UAC_GenerateTestSignal(&huac, 2000, 16000, 0); /* 2kHz, 50% amplitude, continuous */
-        break;
-      case 3:
-        test_mode = 3; /* Noise */
-        UAC_StartAudioTest(&huac, test_mode);
-        break;
-    }
+    /* Start microphone processing */
+    MIC_ARRAY_Init_Microphones();
     
-    /* Send test mode change message via UART */
-    uint8_t msg[] = "Test mode changed\r\n";
+    /* Send phase change message via UART */
+    uint8_t msg[] = "Switching to microphone mode\r\n";
     HAL_UART_Transmit(&huart2, msg, sizeof(msg)-1, 100);
   }
   
-  /* Process audio test data */
-  UAC_ProcessAudioTest(&huac);
+  /* In test tone phase - generate test tone */
+  if (test_phase == 0) {
+    Audio_Generate_Test_Tone();
+  }
+  /* In microphone phase - process microphone data */
+  else if (test_phase == 1) {
+    MIC_ARRAY_Process_Audio();
+  }
 }
 
 /* USER CODE END 4 */
