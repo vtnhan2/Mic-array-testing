@@ -397,8 +397,25 @@ void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (g_hmic_array != NULL && hi2s == g_hmic_array->hi2s) {
         dma_half_complete = 1;
-        printf("[MIC_ARRAY] DMA Half Complete - Buffer: %p, Size: %d\r\n", 
-               g_hmic_array->audio_buffer, g_hmic_array->buffer_size);
+        
+        // Debug: Check if buffer data is changing
+        static uint32_t last_buffer_data[4] = {0};
+        uint32_t* current_buffer = (uint32_t*)g_hmic_array->audio_buffer;
+        uint32_t data_changed = 0;
+        
+        for (int i = 0; i < 4; i++) {
+            if (current_buffer[i] != last_buffer_data[i]) {
+                data_changed = 1;
+                last_buffer_data[i] = current_buffer[i];
+            }
+        }
+        
+        printf("[MIC_ARRAY] DMA Half Complete - Buffer: %p, Size: %d, DataChanged: %d\r\n", 
+               g_hmic_array->audio_buffer, g_hmic_array->buffer_size, data_changed);
+        
+        // Debug: Print first few samples
+        printf("[MIC_ARRAY] First 4 samples: [%08X, %08X, %08X, %08X]\r\n", 
+               current_buffer[0], current_buffer[1], current_buffer[2], current_buffer[3]);
         
         // Process audio data for USB streaming
         extern void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length);
@@ -418,8 +435,25 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
 {
     if (g_hmic_array != NULL && hi2s == g_hmic_array->hi2s) {
         dma_full_complete = 1;
-        printf("[MIC_ARRAY] DMA Full Complete - Buffer: %p, Size: %d\r\n", 
-               g_hmic_array->audio_buffer, g_hmic_array->buffer_size);
+        
+        // Debug: Check if buffer data is changing
+        static uint32_t last_buffer_data[4] = {0};
+        uint32_t* current_buffer = (uint32_t*)g_hmic_array->audio_buffer + (g_hmic_array->buffer_size / 2);
+        uint32_t data_changed = 0;
+        
+        for (int i = 0; i < 4; i++) {
+            if (current_buffer[i] != last_buffer_data[i]) {
+                data_changed = 1;
+                last_buffer_data[i] = current_buffer[i];
+            }
+        }
+        
+        printf("[MIC_ARRAY] DMA Full Complete - Buffer: %p, Size: %d, DataChanged: %d\r\n", 
+               g_hmic_array->audio_buffer, g_hmic_array->buffer_size, data_changed);
+        
+        // Debug: Print first few samples
+        printf("[MIC_ARRAY] First 4 samples: [%08X, %08X, %08X, %08X]\r\n", 
+               current_buffer[0], current_buffer[1], current_buffer[2], current_buffer[3]);
         
         // Process audio data for USB streaming
         extern void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length);

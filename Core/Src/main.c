@@ -167,13 +167,21 @@ int main(void)
   MX_I2S5_Init();
   MX_SPI3_Init();
   MX_USART2_UART_Init();
-  MX_USB_DEVICE_Init();
+  
   /* USER CODE BEGIN 2 */
+  /* Initialize USB Device FIRST */
+  MX_USB_DEVICE_Init();
+  HAL_Delay(100);  // Wait for USB to be ready
+  
   /* Initialize UAC Microphone */
+  printf("[MAIN] Starting UAC_Init_Microphone...\r\n");
   UAC_Init_Microphone();
+  printf("[MAIN] UAC_Init_Microphone completed\r\n");
   
   /* Initialize Mic Array */
+  printf("[MAIN] Starting MIC_ARRAY_Init_Microphones...\r\n");
   MIC_ARRAY_Init_Microphones();
+  printf("[MAIN] MIC_ARRAY_Init_Microphones completed\r\n");
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -612,6 +620,11 @@ void UAC_Init_Microphone(void)
       
       printf("Audio system initialized and ready!\r\n");
       printf("USB Streaming Status: Active=%d\r\n", huac.is_streaming);
+      
+      /* Start microphone transmission */
+      HAL_Delay(100);  // Wait for USB to be ready
+      extern void AUDIO_Start_Microphone_Transmission(void);
+      AUDIO_Start_Microphone_Transmission();
       
       /* Send test message via UART */
       uint8_t msg[] = "UAC Microphone initialized successfully!\r\n";

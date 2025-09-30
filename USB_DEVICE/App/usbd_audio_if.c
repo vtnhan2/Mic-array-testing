@@ -310,6 +310,41 @@ static int8_t AUDIO_PeriodicTC_FS(uint8_t *pbuf, uint32_t size, uint8_t cmd)
   /* USER CODE END 5 */
 }
 
+/* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+void AUDIO_Start_Microphone_Transmission(void)
+{
+  // Start microphone data transmission to USB host
+  extern USBD_HandleTypeDef hUsbDeviceFS;
+  
+  printf("[USB_AUDIO] AUDIO_Start_Microphone_Transmission called\r\n");
+  printf("[USB_AUDIO] huac.is_streaming: %d\r\n", huac.is_streaming);
+  
+  if (huac.is_streaming) {
+    // Force enable IN endpoint and start streaming
+    extern UART_HandleTypeDef huart2;
+    char start_msg[] = "Starting USB IN endpoint transmission...\r\n";
+    HAL_UART_Transmit(&huart2, (uint8_t*)start_msg, strlen(start_msg), 100);
+    
+    printf("[USB_AUDIO] Triggering initial transmission...\r\n");
+    
+    // Trigger initial transmission to kickstart the endpoint
+    uint8_t initial_buffer[96]; // USB_AUDIO_PACKET_SIZE * 2
+    memset(initial_buffer, 0, sizeof(initial_buffer)); // Start with silence
+    
+    // Start transmission on IN endpoint
+    HAL_StatusTypeDef status = USBD_LL_Transmit(&hUsbDeviceFS, 0x81, initial_buffer, sizeof(initial_buffer));
+    printf("[USB_AUDIO] USBD_LL_Transmit status: %d\r\n", status);
+    
+    // Also try to trigger any pending transfers
+    extern USBD_AUDIO_ItfTypeDef USBD_AUDIO_fops_FS;
+    int8_t result = USBD_AUDIO_fops_FS.PeriodicTC(initial_buffer, sizeof(initial_buffer), AUDIO_IN_TC);
+    printf("[USB_AUDIO] PeriodicTC result: %d\r\n", result);
+  } else {
+    printf("[USB_AUDIO] huac.is_streaming is FALSE - cannot start transmission\r\n");
+  }
+}
+/* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
+
 /**
   * @brief  Gets AUDIO State.
   * @retval USBD_OK if all operations are OK else USBD_FAIL

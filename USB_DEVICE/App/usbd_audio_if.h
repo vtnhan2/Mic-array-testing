@@ -115,7 +115,7 @@ void TransferComplete_CallBack_FS(void);
 void HalfTransfer_CallBack_FS(void);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
-
+void AUDIO_Start_Microphone_Transmission(void);
 /* USER CODE END EXPORTED_FUNCTIONS */
 
 /**
