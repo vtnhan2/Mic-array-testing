@@ -52,7 +52,7 @@ HAL_StatusTypeDef MIC_ARRAY_Init(MIC_ARRAY_HandleTypeDef *hmic, I2S_HandleTypeDe
     if (hmic == NULL || hi2s == NULL || config == NULL) {
         printf("[MIC_ARRAY] Error: NULL parameters\r\n");
         return HAL_ERROR;
-    }
+    } 
 
     /* Initialize handle */
     hmic->hi2s = hi2s;
@@ -417,18 +417,10 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
   * @brief  Initialize Mic Array (wrapper function for main.c)
   * @retval None
   */
-void MIC_ARRAY_Init_Microphones(void)
-{
-    /* This function should be implemented in main.c */
-    /* It's declared here to avoid undefined reference errors */
-}
+// Implementation moved to main.c
 
 /**
   * @brief  Process Mic Array Audio (wrapper function for main.c)
   * @retval None
   */
-void MIC_ARRAY_Process_Audio(void)
-{
-    /* This function should be implemented in main.c */
-    /* It's declared here to avoid undefined reference errors */
-}
+// Implementation moved to main.c

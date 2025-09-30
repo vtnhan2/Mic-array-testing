@@ -27,6 +27,7 @@
 #include "usbd_audio_if.h"
 #include <math.h>
 #include <stdlib.h>
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,6 +60,9 @@ SPI_HandleTypeDef hspi3;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+/* USB Device Handle */
+extern USBD_HandleTypeDef hUsbDeviceFS;
+
 /* Mic Array Variables */
 MIC_ARRAY_HandleTypeDef hmic_array;
 MIC_ARRAY_Config_t mic_array_config;
@@ -74,9 +78,7 @@ uint8_t test_mode = 1;  /* 0=silence, 1=sine, 2=square, 3=noise */
 uint16_t mic_audio_buffer[MIC_ARRAY_BUFFER_SIZE];
 uint16_t usb_audio_buffer[UAC_AUDIO_BUFFER_SIZE / 2];
   uint8_t use_mic_array = 1;  /* 1=use mic array, 0=use test sound */
-  /* USER CODE END PV */
-
-extern USBD_HandleTypeDef hUsbDeviceFS;
+/* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -290,7 +292,7 @@ static void MX_I2S1_Init(void)
   hi2s1.Instance = SPI1;
   hi2s1.Init.Mode = I2S_MODE_SLAVE_RX;
   hi2s1.Init.Standard = I2S_STANDARD_PHILIPS;
-  hi2s1.Init.DataFormat = I2S_DATAFORMAT_32B;
+  hi2s1.Init.DataFormat = I2S_DATAFORMAT_24B;
   hi2s1.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
   hi2s1.Init.AudioFreq = I2S_AUDIOFREQ_48K;
   hi2s1.Init.CPOL = I2S_CPOL_LOW;
@@ -324,7 +326,7 @@ static void MX_I2S2_Init(void)
   hi2s2.Instance = SPI2;
   hi2s2.Init.Mode = I2S_MODE_MASTER_RX;
   hi2s2.Init.Standard = I2S_STANDARD_PHILIPS;
-  hi2s2.Init.DataFormat = I2S_DATAFORMAT_32B;
+  hi2s2.Init.DataFormat = I2S_DATAFORMAT_24B;
   hi2s2.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
   hi2s2.Init.AudioFreq = I2S_AUDIOFREQ_48K;
   hi2s2.Init.CPOL = I2S_CPOL_LOW;
@@ -358,7 +360,7 @@ static void MX_I2S4_Init(void)
   hi2s4.Instance = SPI4;
   hi2s4.Init.Mode = I2S_MODE_SLAVE_RX;
   hi2s4.Init.Standard = I2S_STANDARD_PHILIPS;
-  hi2s4.Init.DataFormat = I2S_DATAFORMAT_32B;
+  hi2s4.Init.DataFormat = I2S_DATAFORMAT_24B;
   hi2s4.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
   hi2s4.Init.AudioFreq = I2S_AUDIOFREQ_48K;
   hi2s4.Init.CPOL = I2S_CPOL_LOW;
@@ -392,7 +394,7 @@ static void MX_I2S5_Init(void)
   hi2s5.Instance = SPI5;
   hi2s5.Init.Mode = I2S_MODE_SLAVE_RX;
   hi2s5.Init.Standard = I2S_STANDARD_PHILIPS;
-  hi2s5.Init.DataFormat = I2S_DATAFORMAT_32B;
+  hi2s5.Init.DataFormat = I2S_DATAFORMAT_24B;
   hi2s5.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
   hi2s5.Init.AudioFreq = I2S_AUDIOFREQ_48K;
   hi2s5.Init.CPOL = I2S_CPOL_LOW;
@@ -529,6 +531,48 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 
 /**
+  * @brief  Initialize Mic Array Microphones
+  * @retval None
+  */
+void MIC_ARRAY_Init_Microphones(void)
+{
+    // Configure parameters
+    mic_array_config.sample_rate = 48000;    // 48kHz
+    mic_array_config.channels = 4;           // 4 microphones
+    mic_array_config.bits_per_sample = 16;   // 16-bit
+    mic_array_config.buffer_size = MIC_ARRAY_BUFFER_SIZE; // 512 samples
+    mic_array_config.mic_count = 4;
+    
+    // Initialize mic array
+    MIC_ARRAY_Init(&hmic_array, &hi2s2, &mic_array_config);
+    MIC_ARRAY_StartStreaming(&hmic_array);
+    
+    mic_array_initialized = 1;
+    printf("Mic Array initialized successfully!\r\n");
+}
+
+/**
+  * @brief  Process Mic Array Audio
+  * @retval None
+  */
+void MIC_ARRAY_Process_Audio(void)
+{
+    // Process audio data from mic array
+    if (MIC_ARRAY_GetStatus(&hmic_array)) {
+        // Read audio data from mic array
+        uint16_t audio_data[MIC_ARRAY_BUFFER_SIZE];
+        if (MIC_ARRAY_ReadData(&hmic_array, audio_data, MIC_ARRAY_BUFFER_SIZE) == HAL_OK) {
+            // Convert multi-channel to mono for USB
+            uint16_t mono_data[MIC_ARRAY_BUFFER_SIZE / 4];
+            MIC_ARRAY_ProcessData(&hmic_array, audio_data, mono_data, MIC_ARRAY_BUFFER_SIZE);
+            
+            // Copy to USB audio buffer
+            memcpy(huac.audio_buffer, mono_data, sizeof(mono_data));
+        }
+    }
+}
+
+/**
   * @brief  Initialize UAC Microphone
   * @author  Nhan Vo
   * @date    2025-09-14
@@ -648,110 +692,4 @@ void assert_failed(uint8_t *file, uint32_t line)
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
-
-/* USER CODE BEGIN 7 */
-/**
-  * @brief  Initialize Mic Array
-  * @author Nhan Vo
-  * @date 2025-01-14
-  * @retval None
-  */
-void MIC_ARRAY_Init_Microphones(void)
-{
-  HAL_StatusTypeDef status;
-  
-  printf("[MAIN] Starting MIC_ARRAY_Init_Microphones...\r\n");
-  
-  /* Configure mic array parameters */
-  mic_array_config.sample_rate = 48000;  /* 48kHz sample rate */
-  mic_array_config.channels = 4;         /* 4 microphones (MIC_D0, D1, D2, D3) */
-  mic_array_config.bits_per_sample = 16; /* 16-bit samples */
-  mic_array_config.buffer_size = MIC_ARRAY_BUFFER_SIZE;
-  mic_array_config.mic_count = 4;        /* 4 microphones on Sipeed Mic Array */
-  
-  printf("[MAIN] Config: sample_rate=%d, channels=%d, bits=%d, buffer_size=%d\r\n",
-         mic_array_config.sample_rate, mic_array_config.channels, 
-         mic_array_config.bits_per_sample, mic_array_config.buffer_size);
-  
-  /* Initialize Mic Array */
-  printf("[MAIN] Calling MIC_ARRAY_Init...\r\n");
-  status = MIC_ARRAY_Init(&hmic_array, &hi2s2, &mic_array_config);
-  printf("[MAIN] MIC_ARRAY_Init returned: %d\r\n", status);
-  
-  if (status == HAL_OK) {
-    printf("Mic Array Init successful\r\n");
-    
-    /* Start Mic Array streaming */
-    printf("[MAIN] Calling MIC_ARRAY_StartStreaming...\r\n");
-    status = MIC_ARRAY_StartStreaming(&hmic_array);
-    printf("[MAIN] MIC_ARRAY_StartStreaming returned: %d\r\n", status);
-    
-    if (status == HAL_OK) {
-      mic_array_initialized = 1;
-      printf("Mic Array streaming started successfully!\r\n");
-      printf("Mic Array channels: %d, sample_rate: %d\r\n", 
-             hmic_array.channels, hmic_array.sample_rate);
-    } else {
-      printf("Mic Array StartStreaming failed: %d\r\n", status);
-    }
-  } else {
-    printf("Mic Array Init failed: %d\r\n", status);
-  }
-  
-  printf("[MAIN] MIC_ARRAY_Init_Microphones completed\r\n");
-}
-
-/**
-  * @brief  Process Mic Array Audio Data
-  * @author Nhan Vo
-  * @date 2025-01-14
-  * @retval None
-  */
-void MIC_ARRAY_Process_Audio(void)
-{
-  static uint32_t debug_counter = 0;
-  
-  if (!mic_array_initialized) {
-    return;
-  }
-  
-  /* Read data from mic array - only when DMA has new data */
-  HAL_StatusTypeDef status = MIC_ARRAY_ReadData(&hmic_array, mic_audio_buffer, MIC_ARRAY_BUFFER_SIZE);
-  if (status == HAL_OK) {
-    /* Debug: Check if we're getting non-zero data */
-    uint32_t non_zero_count = 0;
-    for (uint16_t i = 0; i < MIC_ARRAY_BUFFER_SIZE; i++) {
-      if (mic_audio_buffer[i] != 0) {
-        non_zero_count++;
-      }
-    }
-    
-    /* Debug output every 10 calls when we have data */
-    if (debug_counter % 10 == 0) {
-      printf("[MIC_ARRAY] Processing: Non-zero samples: %lu/%d\r\n", non_zero_count, MIC_ARRAY_BUFFER_SIZE);
-      if (non_zero_count > 0) {
-        printf("[MIC_ARRAY] Sample values: %d, %d, %d, %d\r\n", 
-               mic_audio_buffer[0], mic_audio_buffer[1], mic_audio_buffer[2], mic_audio_buffer[3]);
-      }
-    }
-    debug_counter++;
-    
-    /* Process multi-channel data to mono */
-    status = MIC_ARRAY_ProcessData(&hmic_array, mic_audio_buffer, usb_audio_buffer, MIC_ARRAY_BUFFER_SIZE);
-    if (status == HAL_OK) {
-      /* Data is now ready in usb_audio_buffer for USB transmission */
-      printf("[MIC_ARRAY] Processed %d samples to USB buffer\r\n", MIC_ARRAY_BUFFER_SIZE / 4);
-    }
-  } else if (status == HAL_BUSY) {
-    /* No new DMA data - this is normal */
-  } else {
-    /* Error occurred */
-    if (debug_counter % 100 == 0) {
-      printf("[MIC_ARRAY] ReadData error: %d\r\n", status);
-    }
-    debug_counter++;
-  }
-}
-/* USER CODE END 7 */
-
 #endif /* USE_FULL_ASSERT */

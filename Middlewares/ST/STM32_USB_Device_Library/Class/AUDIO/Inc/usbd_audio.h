@@ -58,11 +58,7 @@ extern "C" {
 #endif /* AUDIO_FS_BINTERVAL */
 
 #ifndef AUDIO_OUT_EP
-#ifdef USBD_AUDIO_AS_MICROPHONE
-#define AUDIO_OUT_EP                                  0x81U  /* IN endpoint for microphone */
-#else
-#define AUDIO_OUT_EP                                  0x01U  /* OUT endpoint for speaker */
-#endif /* USBD_AUDIO_AS_MICROPHONE */
+#define AUDIO_OUT_EP                                  0x01U
 #endif /* AUDIO_OUT_EP */
 
 #define USB_AUDIO_CONFIG_DESC_SIZ                     0x6DU
@@ -109,11 +105,7 @@ extern "C" {
 #define AUDIO_IN_TC                                   0x02U
 
 
-#ifdef USBD_AUDIO_AS_MICROPHONE
-#define AUDIO_OUT_PACKET                              (uint16_t)(((USBD_AUDIO_FREQ * 2U * 1U) / 1000U))  /* Mono for microphone */
-#else
-#define AUDIO_OUT_PACKET                              (uint16_t)(((USBD_AUDIO_FREQ * 2U * 2U) / 1000U))  /* Stereo for speaker */
-#endif /* USBD_AUDIO_AS_MICROPHONE */
+#define AUDIO_OUT_PACKET                              (uint16_t)(((USBD_AUDIO_FREQ * 2U * 2U) / 1000U))
 #define AUDIO_DEFAULT_VOLUME                          70U
 
 /* Number of sub-packets in the audio transfer buffer. You can modify this value but always make sure

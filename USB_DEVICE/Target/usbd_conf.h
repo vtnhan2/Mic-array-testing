@@ -37,8 +37,8 @@
 /* USER CODE BEGIN INCLUDE */
 
 /* USB Audio Microphone Configuration */
-#define AUDIO_IN_EP         0x81U  /* IN endpoint for microphone data */
 #define USBD_AUDIO_AS_MICROPHONE    1U  /* Configure as microphone instead of speaker */
+#define AUDIO_IN_EP         0x81U  /* IN endpoint for microphone data */
 
 /* Make sure the microphone flag is globally available */
 #ifndef USBD_AUDIO_AS_MICROPHONE
