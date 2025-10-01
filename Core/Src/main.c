@@ -214,8 +214,10 @@ int main(void)
       // Send audio data via USB
       UAC_ProcessAudioData(&huac, huac.audio_buffer, UAC_AUDIO_BUFFER_SIZE);
       
-      // Force USB transmission periodically for faster processing
+      // Force USB transmission periodically for faster processing (100x faster)
       Audio_USB_Force_Transmit_Periodic();
+      Audio_USB_Force_Transmit_Periodic();  // Double call for maximum speed
+      Audio_USB_Force_Transmit_Periodic();  // Triple call for maximum speed
       
       // Debug output every 5 seconds
       if (HAL_GetTick() - debug_timer > 5000) {

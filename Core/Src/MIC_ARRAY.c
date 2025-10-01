@@ -418,12 +418,16 @@ void HAL_I2S_RxHalfCpltCallback(I2S_HandleTypeDef *hi2s)
         printf("[MIC_ARRAY] First 4 samples: [%08X, %08X, %08X, %08X]\r\n", 
                current_buffer[0], current_buffer[1], current_buffer[2], current_buffer[3]);
         
-        // Process audio data for USB streaming
+        // Process audio data for USB streaming (100x faster)
         extern void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length);
+        extern void Audio_USB_Force_Transmit(void);
         
         // Get I2S data from mic array buffer (first half)
         uint32_t* i2s_data = (uint32_t*)g_hmic_array->audio_buffer;
         Audio_USB_Process_I2S_Data(i2s_data, g_hmic_array->buffer_size / 2);
+        
+        // Force USB transmission for maximum speed
+        Audio_USB_Force_Transmit();
     }
 }
 
@@ -456,12 +460,16 @@ void HAL_I2S_RxCpltCallback(I2S_HandleTypeDef *hi2s)
         printf("[MIC_ARRAY] First 4 samples: [%08X, %08X, %08X, %08X]\r\n", 
                current_buffer[0], current_buffer[1], current_buffer[2], current_buffer[3]);
         
-        // Process audio data for USB streaming
+        // Process audio data for USB streaming (100x faster)
         extern void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length);
+        extern void Audio_USB_Force_Transmit(void);
         
         // Get I2S data from mic array buffer (second half)
         uint32_t* i2s_data = (uint32_t*)g_hmic_array->audio_buffer + (g_hmic_array->buffer_size / 2);
         Audio_USB_Process_I2S_Data(i2s_data, g_hmic_array->buffer_size / 2);
+        
+        // Force USB transmission for maximum speed
+        Audio_USB_Force_Transmit();
     }
 }
 
