@@ -133,8 +133,9 @@ HAL_StatusTypeDef MIC_ARRAY_StartStreaming(MIC_ARRAY_HandleTypeDef *hmic)
     
     /* Start I2S reception with circular DMA */
     /* For 4-channel I2S, we need to receive 4 samples per frame */
+    /* Reduced buffer size for faster processing and less jitter */
     uint16_t samples_per_frame = hmic->channels;  /* 4 channels */
-    uint16_t total_samples = hmic->buffer_size * samples_per_frame;
+    uint16_t total_samples = (hmic->buffer_size / 2) * samples_per_frame;  // Reduced buffer size
     
     printf("[MIC_ARRAY] Starting circular DMA: %d samples per frame, %d total samples\r\n", 
            samples_per_frame, total_samples);

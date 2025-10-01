@@ -28,8 +28,8 @@ static volatile uint32_t processed_samples = 0;
 static volatile uint32_t usb_samples_sent = 0;
 static volatile uint8_t audio_quality_monitor = 0;
 
-// USB Audio streaming buffers and state - Optimized for smooth playback
-#define USB_RING_BUFFER_SIZE (USB_AUDIO_PACKET_SIZE * 32) // Increased buffer for larger packets
+// USB Audio streaming buffers and state - Optimized for faster processing
+#define USB_RING_BUFFER_SIZE (USB_AUDIO_PACKET_SIZE * 8) // Reduced buffer for faster processing
 static int16_t usb_audio_buffer[USB_RING_BUFFER_SIZE];
 static volatile uint16_t usb_buffer_write_ptr = 0;
 static volatile uint16_t usb_buffer_read_ptr = 0;
@@ -40,7 +40,7 @@ static volatile uint32_t buffer_underruns = 0;
 
 // Force USB transmission timer
 static volatile uint32_t usb_force_transmit_timer = 0;
-#define USB_FORCE_TRANSMIT_INTERVAL 100  // Force transmit every 100ms
+#define USB_FORCE_TRANSMIT_INTERVAL 20   // Force transmit every 20ms for faster processing
 
 // ================= Public API =============================
 AudioMode_t Audio_GetMode(void)   { return audioMode; }
@@ -186,7 +186,7 @@ void Audio_USB_Start_Streaming(void)
     usb_buffer_level = 0;
     usb_buffer_write_ptr = 0;
     usb_buffer_read_ptr = 0;
-    printf("[AUDIO] USB Streaming STARTED\r\n");
+    printf("[AUDIO] USB Streaming STARTED - BufferSize=%d, PacketSize=%d\r\n", USB_RING_BUFFER_SIZE, USB_AUDIO_PACKET_SIZE);
 }
 
 void Audio_USB_Stop_Streaming(void)
@@ -201,17 +201,41 @@ void Audio_USB_Force_Transmit(void)
         extern USBD_HandleTypeDef hUsbDeviceFS;
         extern USBD_AUDIO_ItfTypeDef USBD_AUDIO_fops_FS;
         
+        printf("[AUDIO] Force transmit: Active=%d, Level=%d\r\n", usb_streaming_active, usb_buffer_level);
+        
         // Create a buffer for transmission
         uint8_t transmit_buffer[USB_AUDIO_PACKET_SIZE * 2];
         uint16_t bytes_filled = Audio_USB_Get_Next_Packet(transmit_buffer, sizeof(transmit_buffer));
         
+        printf("[AUDIO] Force transmit: bytes_filled=%d\r\n", bytes_filled);
+        
         if (bytes_filled > 0) {
             // Force transmit via USB
             HAL_StatusTypeDef status = USBD_LL_Transmit(&hUsbDeviceFS, 0x81, transmit_buffer, bytes_filled);
+            printf("[AUDIO] Force transmit: USBD_LL_Transmit status=%d\r\n", status);
             if (status != HAL_OK) {
                 printf("[AUDIO] Force transmit failed: %d\r\n", status);
             }
         }
+    } else {
+        printf("[AUDIO] Force transmit: Not active or no data (Active=%d, Level=%d)\r\n", usb_streaming_active, usb_buffer_level);
+    }
+}
+
+void Audio_USB_Force_Transmit_Periodic(void)
+{
+    // Force transmit periodically for faster processing
+    static uint32_t last_force_time = 0;
+    uint32_t current_time = HAL_GetTick();
+    
+    if (usb_streaming_active && (current_time - last_force_time) >= USB_FORCE_TRANSMIT_INTERVAL) {
+        last_force_time = current_time;
+        Audio_USB_Force_Transmit();
+    }
+    
+    // Aggressive transmission if buffer is getting full
+    if (usb_streaming_active && usb_buffer_level > (USB_RING_BUFFER_SIZE * 1 / 8)) {
+        Audio_USB_Force_Transmit();
     }
 }
 
@@ -289,8 +313,9 @@ void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length)
         printf("[AUDIO] Samples stored: %lu, Buffer level: %d\r\n", samples_stored, usb_buffer_level);
     }
     
-    // Force USB transmission if buffer is getting full
-    if (usb_buffer_level > (USB_RING_BUFFER_SIZE * 3 / 4)) {
+    // Force USB transmission more frequently for faster processing and less jitter
+    if (usb_buffer_level > (USB_RING_BUFFER_SIZE * 1 / 8)) {
+        printf("[AUDIO] Buffer getting full - forcing USB transmission\r\n");
         Audio_USB_Force_Transmit();
     }
 }
@@ -302,8 +327,8 @@ uint16_t Audio_USB_Get_Next_Packet(uint8_t* buffer, uint16_t max_size)
     
     // Debug: Print status every 100 calls
     if (debug_count % 100 == 0) {
-        printf("[AUDIO] USB Get Packet: Active=%d, Level=%d/%d, MaxSize=%d\r\n", 
-               usb_streaming_active, usb_buffer_level, buffer_size, max_size);
+        printf("[AUDIO] USB Get Packet: Active=%d, Level=%d/%d, MaxSize=%d, BufferSize=%d\r\n", 
+               usb_streaming_active, usb_buffer_level, buffer_size, max_size, USB_RING_BUFFER_SIZE);
     }
     debug_count++;
     
@@ -313,8 +338,14 @@ uint16_t Audio_USB_Get_Next_Packet(uint8_t* buffer, uint16_t max_size)
                debug_count, usb_streaming_active, usb_buffer_level);
     }
     
+    // Debug: Print every call for force transmit
+    if (debug_count % 10 == 0) {
+        printf("[AUDIO] USB Get Packet: count=%lu, Active=%d, Level=%d, MaxSize=%d\r\n", 
+               debug_count, usb_streaming_active, usb_buffer_level, max_size);
+    }
+    
     // Lower threshold to reduce choppy audio - send partial data if needed
-    uint16_t min_samples = USB_AUDIO_PACKET_SIZE / 4; // Accept 1/4 packet minimum
+    uint16_t min_samples = USB_AUDIO_PACKET_SIZE / 16; // Accept 1/16 packet minimum for faster processing
     
     if (!usb_streaming_active || usb_buffer_level < USB_AUDIO_PACKET_SIZE) {
         // Not enough data or not streaming - send silence and count underrun

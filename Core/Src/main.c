@@ -214,6 +214,9 @@ int main(void)
       // Send audio data via USB
       UAC_ProcessAudioData(&huac, huac.audio_buffer, UAC_AUDIO_BUFFER_SIZE);
       
+      // Force USB transmission periodically for faster processing
+      Audio_USB_Force_Transmit_Periodic();
+      
       // Debug output every 5 seconds
       if (HAL_GetTick() - debug_timer > 5000) {
         printf("Audio Status: UAC(conf=%d,str=%d), MicArray(init=%d,str=%d), use_mic=%d\r\n", 
@@ -224,8 +227,8 @@ int main(void)
       }
     }
     
-    /* Small delay to prevent overwhelming the system */
-    HAL_Delay(1);
+    /* Minimal delay to prevent overwhelming the system while maintaining real-time performance */
+    HAL_Delay(0);  // No delay for maximum performance
   }
   /* USER CODE END 3 */
 }
@@ -347,7 +350,7 @@ static void MX_I2S2_Init(void)
   hi2s2.Instance = SPI2;
   hi2s2.Init.Mode = I2S_MODE_MASTER_RX;
   hi2s2.Init.Standard = I2S_STANDARD_PHILIPS;
-  hi2s2.Init.DataFormat = I2S_DATAFORMAT_24B;
+  hi2s2.Init.DataFormat = I2S_DATAFORMAT_16B;  // Changed to 16-bit for better performance
   hi2s2.Init.MCLKOutput = I2S_MCLKOUTPUT_DISABLE;
   hi2s2.Init.AudioFreq = I2S_AUDIOFREQ_48K;
   hi2s2.Init.CPOL = I2S_CPOL_LOW;
@@ -513,16 +516,16 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA1_Stream3_IRQn interrupt configuration - Lower priority than USB */
-  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 1, 0);
+  /* DMA1_Stream3_IRQn interrupt configuration - Higher priority for I2S2 (microphone) */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 0);  // Highest priority for I2S2
   HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
-  /* DMA2_Stream0_IRQn interrupt configuration - Lower priority than USB */
+  /* DMA2_Stream0_IRQn interrupt configuration - Medium priority for I2S1 */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
-  /* DMA2_Stream3_IRQn interrupt configuration - Lower priority than USB */
+  /* DMA2_Stream3_IRQn interrupt configuration - Medium priority for I2S4 */
   HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
-  /* DMA2_Stream5_IRQn interrupt configuration - Lower priority than USB */
+  /* DMA2_Stream5_IRQn interrupt configuration - Medium priority for I2S5 */
   HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 
