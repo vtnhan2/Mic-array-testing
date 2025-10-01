@@ -33,6 +33,7 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+extern UART_HandleTypeDef huart2;
 
 /* USER CODE END PV */
 
@@ -194,33 +195,41 @@ static int8_t AUDIO_DeInit_FS(uint32_t options)
 static int8_t AUDIO_AudioCmd_FS(uint8_t* pbuf, uint32_t size, uint8_t cmd)
 {
   /* USER CODE BEGIN 2 */
-  printf("[USB_AUDIO] AudioCmd called: cmd=%d, size=%lu\r\n", cmd, size);
+  // Debug: Print every AudioCmd call
+  uint8_t debug_msg[100];
+  int len = snprintf((char*)debug_msg, sizeof(debug_msg), 
+      "[USB_AUDIO] AudioCmd called: cmd=%d, size=%lu\r\n", cmd, size);
+  HAL_UART_Transmit(&huart2, debug_msg, len, 1000);
   
   switch(cmd)
   {
     case AUDIO_CMD_START:
       /* Start audio streaming - for microphone input */
-      printf("[USB_AUDIO] AUDIO_CMD_START received\r\n");
+      uint8_t start_msg[] = "[USB_AUDIO] AUDIO_CMD_START received\r\n";
+      HAL_UART_Transmit(&huart2, start_msg, sizeof(start_msg)-1, 1000);
       huac.is_streaming = 1;
       Audio_USB_Start_Streaming();
       break;
 
     case AUDIO_CMD_PLAY:
       /* For microphone, this is actually recording start */
-      printf("[USB_AUDIO] AUDIO_CMD_PLAY received\r\n");
+      uint8_t play_msg[] = "[USB_AUDIO] AUDIO_CMD_PLAY received\r\n";
+      HAL_UART_Transmit(&huart2, play_msg, sizeof(play_msg)-1, 1000);
       huac.is_streaming = 1;
       Audio_USB_Start_Streaming();
       break;
       
     case AUDIO_CMD_STOP:
       /* Stop audio streaming */
-      printf("[USB_AUDIO] AUDIO_CMD_STOP received\r\n");
+      uint8_t stop_msg[] = "[USB_AUDIO] AUDIO_CMD_STOP received\r\n";
+      HAL_UART_Transmit(&huart2, stop_msg, sizeof(stop_msg)-1, 1000);
       huac.is_streaming = 0;
       Audio_USB_Stop_Streaming();
       break;
       
     default:
-      printf("[USB_AUDIO] Unknown command: %d\r\n", cmd);
+      uint8_t unknown_msg[] = "[USB_AUDIO] Unknown command received\r\n";
+      HAL_UART_Transmit(&huart2, unknown_msg, sizeof(unknown_msg)-1, 1000);
       break;
   }
   UNUSED(pbuf);
@@ -275,8 +284,14 @@ static int8_t AUDIO_PeriodicTC_FS(uint8_t *pbuf, uint32_t size, uint8_t cmd)
   periodic_call_count++;
   
   // Debug: Print first few calls
-  if (periodic_call_count <= 5) {
+  if (periodic_call_count <= 10) {
     printf("[USB_AUDIO] PeriodicTC called: count=%lu, cmd=%d, size=%lu\r\n", 
+           periodic_call_count, cmd, size);
+  }
+  
+  // Debug: Print every 100 calls to track activity
+  if (periodic_call_count % 100 == 0) {
+    printf("[USB_AUDIO] PeriodicTC: count=%lu, cmd=%d, size=%lu\r\n", 
            periodic_call_count, cmd, size);
   }
   
@@ -288,24 +303,30 @@ static int8_t AUDIO_PeriodicTC_FS(uint8_t *pbuf, uint32_t size, uint8_t cmd)
     
     // Microphone data transmission
     if (pbuf != NULL && size > 0) {
+      printf("[USB_AUDIO] Getting audio data: size=%lu\r\n", size);
+      
       // Get audio data from I2S processing and send to USB
       uint16_t bytes_filled = Audio_USB_Get_Next_Packet(pbuf, size);
       
+      printf("[USB_AUDIO] Audio data: %d bytes filled\r\n", bytes_filled);
+
       // Return the actual number of bytes filled
       return (bytes_filled > 0) ? USBD_OK : USBD_FAIL;
     }
-    
+
     // Fill with silence if not ready
     if (pbuf != NULL && size > 0) {
+      printf("[USB_AUDIO] Filling with silence: size=%lu\r\n", size);
       memset(pbuf, 0, size);
     }
   }
   else {
     // Speaker data reception (legacy)
+    printf("[USB_AUDIO] Speaker data reception (legacy)\r\n");
     UNUSED(pbuf);
     UNUSED(size);
   }
-  
+
   return (USBD_OK);
   /* USER CODE END 5 */
 }
@@ -316,16 +337,27 @@ void AUDIO_Start_Microphone_Transmission(void)
   // Start microphone data transmission to USB host
   extern USBD_HandleTypeDef hUsbDeviceFS;
   
-  printf("[USB_AUDIO] AUDIO_Start_Microphone_Transmission called\r\n");
-  printf("[USB_AUDIO] huac.is_streaming: %d\r\n", huac.is_streaming);
+  uint8_t start_msg[] = "[USB_AUDIO] ===== AUDIO_Start_Microphone_Transmission called =====\r\n";
+  HAL_UART_Transmit(&huart2, start_msg, sizeof(start_msg)-1, 1000);
+  
+  uint8_t streaming_msg[50];
+  int len = snprintf((char*)streaming_msg, sizeof(streaming_msg), 
+      "[USB_AUDIO] huac.is_streaming: %d\r\n", huac.is_streaming);
+  HAL_UART_Transmit(&huart2, streaming_msg, len, 1000);
   
   if (huac.is_streaming) {
-    // Force enable IN endpoint and start streaming
-    extern UART_HandleTypeDef huart2;
-    char start_msg[] = "Starting USB IN endpoint transmission...\r\n";
-    HAL_UART_Transmit(&huart2, (uint8_t*)start_msg, strlen(start_msg), 100);
+    // Start USB audio streaming first
+    Audio_USB_Start_Streaming();
     
-    printf("[USB_AUDIO] Triggering initial transmission...\r\n");
+    uint8_t streaming_started_msg[] = "[USB_AUDIO] Audio_USB_Start_Streaming called\r\n";
+    HAL_UART_Transmit(&huart2, streaming_started_msg, sizeof(streaming_started_msg)-1, 1000);
+    
+    // Force enable IN endpoint and start streaming
+    uint8_t endpoint_msg[] = "Starting USB IN endpoint transmission...\r\n";
+    HAL_UART_Transmit(&huart2, endpoint_msg, sizeof(endpoint_msg)-1, 1000);
+    
+    uint8_t trigger_msg[] = "[USB_AUDIO] Triggering initial transmission...\r\n";
+    HAL_UART_Transmit(&huart2, trigger_msg, sizeof(trigger_msg)-1, 1000);
     
     // Trigger initial transmission to kickstart the endpoint
     uint8_t initial_buffer[96]; // USB_AUDIO_PACKET_SIZE * 2
@@ -333,14 +365,26 @@ void AUDIO_Start_Microphone_Transmission(void)
     
     // Start transmission on IN endpoint
     HAL_StatusTypeDef status = USBD_LL_Transmit(&hUsbDeviceFS, 0x81, initial_buffer, sizeof(initial_buffer));
-    printf("[USB_AUDIO] USBD_LL_Transmit status: %d\r\n", status);
+    
+    uint8_t status_msg[50];
+    len = snprintf((char*)status_msg, sizeof(status_msg), 
+        "[USB_AUDIO] USBD_LL_Transmit status: %d\r\n", status);
+    HAL_UART_Transmit(&huart2, status_msg, len, 1000);
     
     // Also try to trigger any pending transfers
     extern USBD_AUDIO_ItfTypeDef USBD_AUDIO_fops_FS;
     int8_t result = USBD_AUDIO_fops_FS.PeriodicTC(initial_buffer, sizeof(initial_buffer), AUDIO_IN_TC);
-    printf("[USB_AUDIO] PeriodicTC result: %d\r\n", result);
+    
+    uint8_t result_msg[50];
+    len = snprintf((char*)result_msg, sizeof(result_msg), 
+        "[USB_AUDIO] PeriodicTC result: %d\r\n", result);
+    HAL_UART_Transmit(&huart2, result_msg, len, 1000);
+    
+    uint8_t done_msg[] = "[USB_AUDIO] ===== Microphone transmission started =====\r\n";
+    HAL_UART_Transmit(&huart2, done_msg, sizeof(done_msg)-1, 1000);
   } else {
-    printf("[USB_AUDIO] huac.is_streaming is FALSE - cannot start transmission\r\n");
+    uint8_t error_msg[] = "[USB_AUDIO] ERROR: huac.is_streaming is FALSE - cannot start transmission\r\n";
+    HAL_UART_Transmit(&huart2, error_msg, sizeof(error_msg)-1, 1000);
   }
 }
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */

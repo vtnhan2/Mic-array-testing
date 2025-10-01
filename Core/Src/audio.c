@@ -29,7 +29,7 @@ static volatile uint32_t usb_samples_sent = 0;
 static volatile uint8_t audio_quality_monitor = 0;
 
 // USB Audio streaming buffers and state - Optimized for smooth playback
-#define USB_RING_BUFFER_SIZE (USB_AUDIO_PACKET_SIZE * 16) // Balanced buffer for smooth audio
+#define USB_RING_BUFFER_SIZE (USB_AUDIO_PACKET_SIZE * 32) // Increased buffer for larger packets
 static int16_t usb_audio_buffer[USB_RING_BUFFER_SIZE];
 static volatile uint16_t usb_buffer_write_ptr = 0;
 static volatile uint16_t usb_buffer_read_ptr = 0;
@@ -37,6 +37,10 @@ static volatile uint16_t usb_buffer_level = 0;
 static volatile uint8_t usb_streaming_active = 0;
 static volatile uint32_t buffer_overruns = 0;
 static volatile uint32_t buffer_underruns = 0;
+
+// Force USB transmission timer
+static volatile uint32_t usb_force_transmit_timer = 0;
+#define USB_FORCE_TRANSMIT_INTERVAL 100  // Force transmit every 100ms
 
 // ================= Public API =============================
 AudioMode_t Audio_GetMode(void)   { return audioMode; }
@@ -102,6 +106,8 @@ HAL_StatusTypeDef Audio_Set_Sample_Rate(uint32_t sample_rate)
 // ================= Audio Control ==========================
 HAL_StatusTypeDef Audio_Init_Live_Mode(void)
 {
+    printf("[AUDIO] Initializing Live Mode...\r\n");
+    
     // Initialize audio buffers
     memset((void*)rxBuffer, 0, sizeof(rxBuffer));
     memset((void*)txBuffer, 0, sizeof(txBuffer));
@@ -120,6 +126,9 @@ HAL_StatusTypeDef Audio_Init_Live_Mode(void)
     buffer_overruns = 0;
     buffer_underruns = 0;
     
+    // Audio buffer manager not needed - using simple ring buffer like reference project
+    
+    printf("[AUDIO] Live Mode initialized successfully\r\n");
     return HAL_OK;
 }
 
@@ -185,10 +194,31 @@ void Audio_USB_Stop_Streaming(void)
     usb_streaming_active = 0;
 }
 
+void Audio_USB_Force_Transmit(void)
+{
+    // Force trigger USB transmission if buffer has data
+    if (usb_streaming_active && usb_buffer_level > 0) {
+        extern USBD_HandleTypeDef hUsbDeviceFS;
+        extern USBD_AUDIO_ItfTypeDef USBD_AUDIO_fops_FS;
+        
+        // Create a buffer for transmission
+        uint8_t transmit_buffer[USB_AUDIO_PACKET_SIZE * 2];
+        uint16_t bytes_filled = Audio_USB_Get_Next_Packet(transmit_buffer, sizeof(transmit_buffer));
+        
+        if (bytes_filled > 0) {
+            // Force transmit via USB
+            HAL_StatusTypeDef status = USBD_LL_Transmit(&hUsbDeviceFS, 0x81, transmit_buffer, bytes_filled);
+            if (status != HAL_OK) {
+                printf("[AUDIO] Force transmit failed: %d\r\n", status);
+            }
+        }
+    }
+}
+
 void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length)
 {
-    const uint16_t buffer_size = USB_RING_BUFFER_SIZE;
     static uint32_t debug_count = 0;
+    static uint32_t total_samples_processed = 0;
     
     // Debug: Print first few samples
     if (debug_count < 10) {
@@ -197,25 +227,34 @@ void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length)
         debug_count++;
     }
     
-    // Check if I2S data is all zeros (silence)
-    uint32_t non_zero_count = 0;
-    for (uint32_t i = 0; i < length && i < 10; i++) {
-        if (i2s_data[i] != 0 && i2s_data[i] != 0xFFFFFFFF) {
-            non_zero_count++;
-        }
-    }
-    if (debug_count == 1) {
-        printf("[AUDIO] Non-zero samples in first 10: %lu\r\n", non_zero_count);
+    // Debug: Print every call to track frequency
+    if (debug_count % 5 == 0) {
+        printf("[AUDIO] Processing call #%lu: length=%lu\r\n", debug_count, length);
     }
     
-    // Process I2S data and convert to USB audio format
-    for (uint32_t i = 0; i < length && usb_buffer_level < buffer_size; i++) {
+    // Debug: Print buffer status every 10 calls (reduced from 100)
+    if (debug_count % 10 == 0) {
+        printf("[AUDIO] Buffer status: Level=%d/%d, WritePtr=%d, ReadPtr=%d\r\n", 
+               usb_buffer_level, USB_RING_BUFFER_SIZE, usb_buffer_write_ptr, usb_buffer_read_ptr);
+    }
+    
+    // Process I2S data and convert to USB audio format (like reference project)
+    uint32_t samples_stored = 0;
+    
+    // Check if buffer is full and skip processing if so
+    if (usb_buffer_level >= USB_RING_BUFFER_SIZE) {
+        // Buffer is full - skip processing to prevent overflow
+        if (debug_count % 10 == 0) {
+            printf("[AUDIO] Buffer full - skipping %lu samples\r\n", length);
+        }
+        return;
+    }
+    
+    for (uint32_t i = 0; i < length && usb_buffer_level < USB_RING_BUFFER_SIZE; i++) {
         uint32_t raw_sample = i2s_data[i];
-        
-        // Convert I2S data to 16-bit signed sample
         int16_t sample = 0;
         
-        // Extract audio data from I2S format (assuming 16-bit left-justified)
+        // Extract audio data from I2S format (like reference project)
         if (raw_sample != 0 && raw_sample != 0xFFFFFFFF) {
             // Convert from I2S format to 16-bit signed
             sample = (int16_t)(raw_sample >> 16);
@@ -238,18 +277,21 @@ void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length)
             }
         }
         
-        // Store in USB buffer (ring buffer)
+        // Store in USB buffer (ring buffer) - like reference project
         usb_audio_buffer[usb_buffer_write_ptr] = sample;
-        usb_buffer_write_ptr = (usb_buffer_write_ptr + 1) % buffer_size;
-        
-        // Track buffer level with overflow protection
-        if (usb_buffer_level < buffer_size) {
-            usb_buffer_level++;
-        } else {
-            // Buffer overflow - advance read pointer and count overrun
-            usb_buffer_read_ptr = (usb_buffer_read_ptr + 1) % buffer_size;
-            buffer_overruns++;
-        }
+        usb_buffer_write_ptr = (usb_buffer_write_ptr + 1) % USB_RING_BUFFER_SIZE;
+        samples_stored++;
+        usb_buffer_level++;
+    }
+    
+    // Debug: Print samples stored every 5 calls
+    if (debug_count % 5 == 0) {
+        printf("[AUDIO] Samples stored: %lu, Buffer level: %d\r\n", samples_stored, usb_buffer_level);
+    }
+    
+    // Force USB transmission if buffer is getting full
+    if (usb_buffer_level > (USB_RING_BUFFER_SIZE * 3 / 4)) {
+        Audio_USB_Force_Transmit();
     }
 }
 
@@ -272,7 +314,7 @@ uint16_t Audio_USB_Get_Next_Packet(uint8_t* buffer, uint16_t max_size)
     }
     
     // Lower threshold to reduce choppy audio - send partial data if needed
-    // uint16_t min_samples = USB_AUDIO_PACKET_SIZE / 4; // Accept 1/4 packet minimum - unused
+    uint16_t min_samples = USB_AUDIO_PACKET_SIZE / 4; // Accept 1/4 packet minimum
     
     if (!usb_streaming_active || usb_buffer_level < USB_AUDIO_PACKET_SIZE) {
         // Not enough data or not streaming - send silence and count underrun

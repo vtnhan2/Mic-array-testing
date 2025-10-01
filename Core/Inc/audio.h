@@ -9,7 +9,7 @@
 
 // USB Audio configuration
 #define USB_AUDIO_SAMPLE_RATE 48000
-#define USB_AUDIO_PACKET_SIZE 96  // 48 samples * 2 bytes per sample
+#define USB_AUDIO_PACKET_SIZE 192  // 96 samples * 2 bytes per sample (increased from 48)
 
 // Audio modes
 typedef enum {
@@ -37,6 +37,7 @@ void Audio_Set_Volume(uint16_t volume);
 // ================= USB Audio Functions ====================
 void Audio_USB_Start_Streaming(void);
 void Audio_USB_Stop_Streaming(void);
+void Audio_USB_Force_Transmit(void);
 void Audio_USB_Process_I2S_Data(uint32_t* i2s_data, uint32_t length);
 uint16_t Audio_USB_Get_Next_Packet(uint8_t* buffer, uint16_t max_size);
 void Audio_USB_Print_Status(void);

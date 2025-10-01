@@ -169,19 +169,34 @@ int main(void)
   MX_USART2_UART_Init();
   
   /* USER CODE BEGIN 2 */
+  /* Test UART first */
+  uint8_t test_msg[] = "STM32 Boot Complete!\r\n";
+  HAL_UART_Transmit(&huart2, test_msg, sizeof(test_msg)-1, 1000);
+  
   /* Initialize USB Device FIRST */
   MX_USB_DEVICE_Init();
   HAL_Delay(100);  // Wait for USB to be ready
   
+  uint8_t usb_msg[] = "USB Device Initialized\r\n";
+  HAL_UART_Transmit(&huart2, usb_msg, sizeof(usb_msg)-1, 1000);
+  
   /* Initialize UAC Microphone */
-  printf("[MAIN] Starting UAC_Init_Microphone...\r\n");
+  uint8_t uac_msg[] = "Starting UAC_Init_Microphone...\r\n";
+  HAL_UART_Transmit(&huart2, uac_msg, sizeof(uac_msg)-1, 1000);
+  
   UAC_Init_Microphone();
-  printf("[MAIN] UAC_Init_Microphone completed\r\n");
+  
+  uint8_t uac_done_msg[] = "UAC_Init_Microphone completed\r\n";
+  HAL_UART_Transmit(&huart2, uac_done_msg, sizeof(uac_done_msg)-1, 1000);
   
   /* Initialize Mic Array */
-  printf("[MAIN] Starting MIC_ARRAY_Init_Microphones...\r\n");
+  uint8_t mic_msg[] = "Starting MIC_ARRAY_Init_Microphones...\r\n";
+  HAL_UART_Transmit(&huart2, mic_msg, sizeof(mic_msg)-1, 1000);
+  
   MIC_ARRAY_Init_Microphones();
-  printf("[MAIN] MIC_ARRAY_Init_Microphones completed\r\n");
+  
+  uint8_t mic_done_msg[] = "MIC_ARRAY_Init_Microphones completed\r\n";
+  HAL_UART_Transmit(&huart2, mic_done_msg, sizeof(mic_done_msg)-1, 1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -195,13 +210,6 @@ int main(void)
     if (uac_initialized) {
       static uint32_t debug_timer = 0;
       
-      if (use_mic_array && mic_array_initialized) {
-        // Use Mic Array data
-        MIC_ARRAY_Process_Audio();
-      } else {
-        // Use test sound sequence
-        UAC_TestSoundSequence(&huac);
-      }
       
       // Send audio data via USB
       UAC_ProcessAudioData(&huac, huac.audio_buffer, UAC_AUDIO_BUFFER_SIZE);
@@ -505,17 +513,17 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
-  /* DMA1_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 0);
+  /* DMA1_Stream3_IRQn interrupt configuration - Lower priority than USB */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
-  /* DMA2_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  /* DMA2_Stream0_IRQn interrupt configuration - Lower priority than USB */
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
-  /* DMA2_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
+  /* DMA2_Stream3_IRQn interrupt configuration - Lower priority than USB */
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
-  /* DMA2_Stream5_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 0, 0);
+  /* DMA2_Stream5_IRQn interrupt configuration - Lower priority than USB */
+  HAL_NVIC_SetPriority(DMA2_Stream5_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream5_IRQn);
 
 }
